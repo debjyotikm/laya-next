@@ -953,6 +953,26 @@ check("compile_cpu/varargs", _args.vararg.arg, "args")
 check("compile_cpu/kwargs", _args.kwarg.arg, "kwargs")
 
 
+# Optional comparison inference is a separate wrapper; Agent's defaults stay unchanged.
+from laya import ComparisonAgent, ComparisonSpecialist, comparison_questions  # noqa: E402
+
+for name in ("ComparisonAgent", "ComparisonSpecialist", "comparison_questions"):
+    check_true(name + " exported", name in laya.__all__)
+for label, fn in (("ComparisonAgent.predict", ComparisonAgent.predict),
+                  ("ComparisonAgent.predict_batch", ComparisonAgent.predict_batch)):
+    check_param(label, fn, "comparison", False, inspect.Parameter.KEYWORD_ONLY)
+    check_param(label, fn, "questions", None)
+check_param("ComparisonAgent.predict_batch", ComparisonAgent.predict_batch, "batch_size", None,
+            inspect.Parameter.KEYWORD_ONLY)
+check_param("ComparisonSpecialist.from_pretrained", ComparisonSpecialist.from_pretrained, "device", None,
+            inspect.Parameter.KEYWORD_ONLY)
+check_param("ComparisonSpecialist.from_pretrained", ComparisonSpecialist.from_pretrained, "expected_sha256", None,
+            inspect.Parameter.KEYWORD_ONLY)
+check_true("ComparisonAgent.system_one alias", ComparisonAgent.system_one is ComparisonAgent.predict)
+check_true("ComparisonAgent.predict_many alias", ComparisonAgent.predict_many is ComparisonAgent.predict_batch)
+check("comparison question labels", list(comparison_questions()["verdict"]["criteria"]),
+      ["supported", "contradicted", "insufficient_context"])
+
 # Optional numeric representation utilities do not change prediction APIs.
 from laya import numeric  # noqa: E402
 
