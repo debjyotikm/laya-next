@@ -142,6 +142,8 @@ class ONNXAgent(HookRegistry):
 
         with open(cfg_path) as f:
             self.cfg = json.load(f)
+        if self.cfg.get("residual_adapters") is not None:
+            raise ValueError("residual_adapters do not support ONNX; use eager PyTorch inference")
 
         if not os.path.exists(onnx_path):
             raise FileNotFoundError(
