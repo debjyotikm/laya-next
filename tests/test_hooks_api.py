@@ -953,6 +953,18 @@ check("compile_cpu/varargs", _args.vararg.arg, "args")
 check("compile_cpu/kwargs", _args.kwarg.arg, "kwargs")
 
 
+# Optional numeric representation utilities do not change prediction APIs.
+from laya import numeric  # noqa: E402
+
+check("numeric exports", numeric.__all__, ["DigitSlot", "AlignedDigit", "decimal_slots", "align_slots"])
+check("decimal_slots parameters", list(sig(numeric.decimal_slots)), ["literal", "start"])
+check_param("decimal_slots", numeric.decimal_slots, "start", 0)
+check("align_slots parameters", list(sig(numeric.align_slots)), ["text", "spans", "offsets"])
+for cls, fields in ((numeric.DigitSlot, ["digit", "power", "character", "negative"]),
+                    (numeric.AlignedDigit, ["quantity", "token", "digit", "power", "negative"])):
+    check(cls.__name__ + " fields", [f.name for f in dataclasses.fields(cls)], fields)
+    check_true(cls.__name__ + " immutable", cls.__dataclass_params__.frozen)
+
 print("\n%d passed, %d failed" % (len(PASS), len(FAIL)))
 for f in FAIL:
     print("  FAIL", f)

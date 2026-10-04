@@ -17,6 +17,7 @@ nav:
       - security.md
   - Fine-tuning:
       - residual-adapters.md
+      - numeric-features.md
       - finetune.md
       - finetune_browser_agent.md
   - reference
