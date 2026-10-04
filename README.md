@@ -1,3 +1,8 @@
+> **laya-next** is an independent experimental fork of [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya).
+> It adds opt-in residual encoder adapters, decimal numeric features, and a local comparison specialist.
+> See [fork features and installation](https://github.com/debjyotikm/laya-next/blob/main/FORK.md). The upstream badges, releases, and benchmark claims below
+> describe upstream LAYA, not evidence for these extensions. `pip install laya` installs upstream, not this fork.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/NandhaKishorM/laya/main/assets/logo-lockup-dark.png" />
