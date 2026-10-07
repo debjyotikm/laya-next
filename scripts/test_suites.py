@@ -34,6 +34,7 @@ SCRIPT_SUITES = [
     "tests/test_predict_long.py",
     "tests/test_attention_dynamic_shapes.py",
     "tests/test_option_order.py",
+    "tests/test_parallel_options.py",
     "tests/test_state_budget.py",
     "tests/test_hooks.py",
     "tests/test_hooks_api.py",
@@ -83,11 +84,13 @@ SCRIPT_SUITES = [
     "tests/test_conformal_abstention.py",
     "tests/test_cli.py",
     "tests/test_cli_lang_guess.py",
+    "tests/test_evidence.py",
     "tests/test_mcp.py",
     "tests/test_mcp_device.py",
     "tests/test_langchain.py",
     "tests/test_portability.py",
     "tests/test_training.py",
+    "tests/test_train.py",
     "tests/test_example_server_limits.py",
     "tests/test_blank_lang_routing.py",
     "tests/test_export_onnx_safety.py",
@@ -111,6 +114,7 @@ PYTEST_SUITES = [
     "tests/test_audit_regressions.py",
     "tests/test_truncation_direction.py",
     "tests/test_compile.py",
+    "tests/test_finetune_entrypoints.py",
 ]
 
 

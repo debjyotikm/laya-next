@@ -40,6 +40,25 @@ def version_tuple(text):
 pyproject = read("pyproject.toml")
 setup_py = read("setup.py")
 
+# An explicit package list keeps setuptools from treating assets/, research/ and notebooks/ as
+# top-level packages, but it also means a new importable subpackage can disappear from wheels
+# while editable installs and source-tree tests keep passing. Derive both sides so additions and
+# removals stay in lockstep.
+package_list = re.search(r"^packages\s*=\s*(\[[^\]]*\])", pyproject, re.M)
+check_true("setuptools/declares an explicit package list", package_list is not None)
+try:
+    declared_packages = set(ast.literal_eval(package_list.group(1))) if package_list else set()
+except (SyntaxError, ValueError):
+    declared_packages = set()
+source_packages = set()
+for package_root, _dirs, files in os.walk(os.path.join(ROOT, "laya")):
+    if "__init__.py" not in files:
+        continue
+    relative = os.path.relpath(package_root, ROOT)
+    source_packages.add(relative.replace(os.sep, "."))
+check("setuptools/packages match every importable laya package",
+      sorted(declared_packages), sorted(source_packages))
+
 requires_python = re.search(r'requires-python\s*=\s*"[>=~^]*\s*([\d.]+)"', pyproject)
 check_true("pyproject/declares requires-python", requires_python is not None)
 floor = version_tuple(requires_python.group(1)) if requires_python else (0, 0)
@@ -250,9 +269,11 @@ def _headings(path):
 _md = []
 for _dirpath, _dirnames, _filenames in os.walk("."):
     # `.pytest_cache` ships a README of its own and `.venv` is where CONTRIBUTING tells
-    # contributors to install; neither is part of the repository.
+    # contributors to install; neither is part of the repository. `.hf-cache` holds
+    # third-party dataset cards downloaded by setup_laya.sh (gitignored).
     _dirnames[:] = [d for d in _dirnames
-                    if d not in (".git", "__pycache__", "node_modules", ".pytest_cache", ".venv")]
+                    if d not in (".git", "__pycache__", "node_modules", ".pytest_cache",
+                                 ".venv", ".hf-cache")]
     _md.extend(os.path.normpath(os.path.join(_dirpath, f))
                for f in _filenames if f.endswith(".md"))
 _md = sorted(_md)
@@ -348,7 +369,7 @@ check_true("compose.cuda/covers laya-serve too",
            re.search(r"^\s{2}laya-serve:", cuda, re.M) is not None,
            "compose.cuda.yaml does not mention laya-serve, so GPU serving would be CPU")
 check("compose.cuda/repeats the torch index for the base service",
-      len(re.findall(r'TORCH_INDEX: "\$\{LAYA_TORCH_INDEX:-cu128\}"', cuda)), 2)
+      len(re.findall(r'TORCH_INDEX: "\$\{LAYA_TORCH_INDEX:-cu130\}"', cuda)), 2)
 check("compose.cuda/repeats the device reservation for both services",
       len(re.findall(r"driver: nvidia", cuda)), 2)
 check_true("compose.cuda/no stale reference to a missing file",

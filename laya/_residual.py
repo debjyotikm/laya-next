@@ -91,5 +91,8 @@ class ResidualAdapters(nn.Module):
 
 
 def reject_unsupported_backend(model, backend):
+    # The backend manager compiles a bound forward, while the legacy SDK compiles
+    # the module. Inspect the owning model in either case.
+    model = getattr(model, "__self__", model)
     if getattr(model, "residual_adapters", None) is not None:
         raise ValueError("residual_adapters do not support %s; use eager PyTorch inference" % backend)

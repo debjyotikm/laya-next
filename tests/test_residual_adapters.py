@@ -212,6 +212,117 @@ def test_sdk_load_batch_and_backend_guards(tmp_path):
     assert agent.model.forward == forward
 
 
+def test_compile_guard_checks_bound_forward():
+    model = make_model()
+    with patch("torch.compile") as compile:
+        for target in (model, model.forward):
+            with pytest.raises(ValueError, match="residual_adapters"):
+                compile_model(target, backend="eager")
+        compile.assert_not_called()
+
+
+def test_sdk_backend_selection_keeps_adapters_eager(tmp_path):
+    from laya.backends import BackendUnavailable
+
+    bundle(tmp_path)
+    agent = Agent(str(tmp_path), device="cpu")
+    # Only simulate the selection policy. No tensor moves to CUDA or real compilation occurs.
+    agent.device = torch.device("cuda")
+    forward = agent.model.forward
+    with patch("torch.compile") as compile, \
+            patch("laya.backends.compile.configure_inductor_cache"), \
+            patch("laya.backends.compile.CompileBackend.warmup", return_value=0), \
+            patch("laya.backends.tilelang_available") as tilelang:
+        assert agent.set_backend("auto", strict=True) == "eager"
+        tilelang.assert_not_called()
+        with pytest.raises(BackendUnavailable, match="residual_adapters"):
+            agent.set_backend("compile", strict=True, warmup=False)
+        assert agent.model.forward == forward
+        with pytest.warns(RuntimeWarning, match="residual_adapters") as caught:
+            assert agent.set_backend("compile", strict=False, warmup=False) == "eager"
+        assert len(caught) == 1
+        assert agent.model.forward == forward
+        compile.assert_not_called()
+
+
+@pytest.mark.parametrize("freeze_adapters", [False, True])
+def test_shared_trainer_updates_adapters_with_frozen_encoder(tmp_path, freeze_adapters):
+    from laya import train
+
+    torch.manual_seed(41)
+    bundle(tmp_path)
+    agent = Agent(str(tmp_path), device="cpu")
+    model = agent.model
+    model.residual_adapters.requires_grad_(not freeze_adapters)
+    before = {k: v.clone() for k, v in model.state_dict().items()}
+    question = {"type": "choice", "instructions": "Select", "criteria": ["yes", "no"]}
+    rows = [{"state": "item yes", "questions": {"answer": question},
+             "expected": {"answer": "yes"}}] * 2
+    items, skipped = train.items_from_rows(agent.tok, rows, 96, 64)
+    assert len(items) == 2 and not skipped
+    config = train.TrainConfig(epochs=2, micro_batch=2, grad_accum=1, freeze_encoder=True,
+                               loss="soft-ce", head_lr=0.01, amp=False, gradient_checkpointing=False,
+                               weight_decay=0, log_every=0)
+    with patch("laya.train._forward", wraps=train._forward) as forward:
+        history = train.train_model(model, agent.tok, items, config, torch.device("cpu"), 96, 64)
+    assert len(history) == 2 and all(torch.isfinite(torch.tensor(history)))
+    assert all(call.args[-1] is freeze_adapters for call in forward.call_args_list)
+    after = model.state_dict()
+    for key in before:
+        if key.startswith("encoder.") or (freeze_adapters and key.startswith("residual_adapters.")):
+            assert torch.equal(before[key], after[key]), key
+    if not freeze_adapters:
+        for index in CONFIG["layers"]:
+            key = "residual_adapters.branches.%d.up.weight" % index
+            assert not torch.equal(before[key], after[key]), key
+    assert not torch.equal(before["scorer.1.weight"], after["scorer.1.weight"])
+
+
+def test_parallel_layout_with_zero_and_trained_adapters(tmp_path):
+    import transformers
+    from laya.common import build_sequence, collate_items
+
+    if int(transformers.__version__.split(".")[0]) < 5:
+        pytest.skip("the upstream parallel layout requires transformers>=5")
+    torch.manual_seed(41)
+    stock = make_model(None).eval()
+    model = DecisionModel(copy.deepcopy(stock.encoder), head_layers=1, dropout=0.0,
+                          residual_adapters=CONFIG).eval()
+    model.load_state_dict(stock.state_dict(), strict=False)
+    bundle(tmp_path, model)
+    cfg = json.loads((tmp_path / "rl_agent_config.json").read_text())
+    cfg["option_layout"] = "parallel"
+    (tmp_path / "rl_agent_config.json").write_text(json.dumps(cfg))
+    agent = Agent(str(tmp_path), device="cpu")
+    question = {"t": "choice", "ins": "Select", "crit": {
+        "yes": "yes", "no": "no item", "item": "item yes no"}}
+
+    def forward(target, order=None):
+        ids, markers, layout = build_sequence(agent.tok, "item yes", question, 96, 64,
+                                              option_order=order, return_layout=True)
+        b = collate_items([[{"ids": ids, "markers": markers, "layout": layout, "qtype": 0}]], 0)
+        return target(b["input_ids"], b["attention_mask"], b["marker_pos"], b["marker_mask"], b["qtype"],
+                      position_ids=b["position_ids"], option_ids=b["option_ids"])
+
+    with torch.no_grad():
+        for expected, actual in zip(forward(stock), forward(agent.model)):
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        nonzero_branches(agent.model)
+        canonical, action = forward(agent.model)
+        order = [2, 0, 1]
+        reordered, reordered_action = forward(agent.model, order)
+        torch.testing.assert_close(reordered, canonical[:, order], rtol=1e-4, atol=1e-5)
+        torch.testing.assert_close(reordered_action, action, rtol=1e-4, atol=1e-5)
+        agent.model.set_residual_enabled(False)
+        assert not torch.equal(canonical, forward(agent.model)[0])
+        agent.model.set_residual_enabled(True)
+    public = {"answer": {"type": "choice", "instructions": "Select", "criteria": question["crit"]}}
+    individual = agent.predict("item yes", public)
+    batched = agent.predict_batch(["item yes", "item no"], public)
+    assert individual["answers"]["answer"]["probabilities"] == pytest.approx(
+        batched[0]["answers"]["answer"]["probabilities"], abs=1e-5)
+
+
 def test_export_and_onnx_loader_refuse_before_execution(tmp_path):
     from scripts.export_onnx import export_to_onnx
     from laya.onnx_agent import ONNXAgent
@@ -225,6 +336,31 @@ def test_export_and_onnx_loader_refuse_before_execution(tmp_path):
     with patch.dict(sys.modules, {"onnxruntime": types.ModuleType("onnxruntime")}):
         with pytest.raises(ValueError, match="residual_adapters"):
             ONNXAgent(str(tmp_path))
+
+
+@pytest.mark.parametrize("adapters", [None, CONFIG])
+def test_onnx_parallel_layout_guard_is_preserved(tmp_path, adapters):
+    from laya.onnx_agent import ONNXAgent
+
+    cfg = bundle(tmp_path)
+    cfg.update(option_layout="parallel", residual_adapters=adapters)
+    (tmp_path / "rl_agent_config.json").write_text(json.dumps(cfg))
+    with patch.dict(sys.modules, {"onnxruntime": types.ModuleType("onnxruntime")}):
+        with pytest.raises(ValueError, match="option_layout"):
+            ONNXAgent(str(tmp_path))
+
+
+def test_benchmark_reports_parameter_storage_not_cpu_peak_memory():
+    path = Path(__file__).resolve().parents[1] / "benchmarks/residual_adapters.py"
+    spec = importlib.util.spec_from_file_location("residual_benchmark_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    model = make_model().eval()
+    result, outputs = module.measure(model, inputs(), torch.device("cpu"), 2)
+    assert result["parameter_bytes"] == sum(p.numel() * p.element_size() for p in model.parameters())
+    assert result["peak_allocated_bytes"] is None
+    assert result["median_ms"] > 0
+    assert all(torch.isfinite(t).all() for t in outputs)
 
 
 def test_sdk_refuses_incomplete_or_unconfigured_adapter_weights(tmp_path):

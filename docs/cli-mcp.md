@@ -36,6 +36,15 @@ laya eval --help
 
 See the [Evaluation harness](evals.md) guide for datasets, metrics, and baseline gates.
 
+### Training CLI
+
+`laya-train`, also reachable as `laya train`, fine-tunes a checkpoint from a CSV or JSONL of labelled
+decisions. See [Fine-tune with `laya-train`](finetune.md#fine-tune-with-laya-train).
+
+```bash
+laya-train --help
+```
+
 ### Route without loading a checkpoint
 
 With text and no prediction flag, the CLI calls `Router.route`:
@@ -154,8 +163,8 @@ Laya does not open a network port.
 | `laya_shortlist` | Shortlists a many-option choice question, then answers it and returns the shortlist metadata. | `state`, `questions`, optional `model`, `k` (default `20`), `task`, `lang`, `lang_guess`, `max_len`, `head_max_len`, `min_confidence` |
 | `laya_preset` | Runs a built-in workflow using its built-in question set. | `preset`, `state`, optional `task`, `lang`, `lang_guess`, `max_len`, `head_max_len`, `min_confidence` |
 | `laya_predict_batch` | Answers many requests in one call. Requests are routed first and grouped by checkpoint, so matching question schemas share forward passes; answers come back in input order. | `requests`, each `{state, questions, model?, task?, lang?, lang_guess?, max_len?, head_max_len?}`, optional `batch_size` |
-| `laya_route_batch` | Decides which checkpoint would answer each request, with no forward pass and no checkpoint load. | `requests`, same shape as `laya_predict_batch` |
-| `laya_decide` | Answers a JSON-schema-shaped decision in one forward pass and returns the decided values with per-field confidence, instead of an answer map to parse. Schema properties may be enum choices, booleans, or integers with a minimum and maximum; free strings, arrays, and nested objects are rejected by path. | `state`, `schema`, optional `model` |
+| `laya_route_batch` | Decides which checkpoint would answer each request, with no forward pass and no checkpoint load. | `requests`, each `{state, questions, model?, task?, lang?, lang_guess?}`, optional `batch_size` |
+| `laya_decide` | Answers a JSON-schema-shaped decision in one forward pass and returns the decided values with per-field confidence, instead of an answer map to parse. Schema properties may be enum choices, booleans, or integers with a minimum and maximum; free strings, arrays, and nested objects are rejected by path. | `state`, `schema`, optional `model`, `min_confidence` |
 
 The three batch and schema tools exist because the same operations are available on the SDK and
 `laya-serve`: handling many requests, or serving a caller that already knows the answer shape,
@@ -165,8 +174,10 @@ does not require dropping to Python. For the schema-driven form in more depth, s
 The shared guardrail says not to send choice questions with more than 20 options without
 shortlisting. `laya_shortlist` keeps the `k` most likely labels before the forward pass; its
 default is `k=20`. It uses mean-pooled embeddings from the answering checkpoint's own encoder,
-so it does not download a second model, and returns the kept labels, cosine scores, `k`, and
-option count for each shortlisted question.
+so it does not download a second model, and returns the kept labels, cosine scores, `k`,
+option count, and whether the question passed through unshortlisted for each shortlisted
+question. A question with `k` at or past its option count is passed through unchanged, so
+its cosine scores come back `null` rather than empty.
 
 `state` must be a non-empty JSON object. `questions` must be a non-empty object whose values use
 Laya's typed question schema. `laya_preset` accepts the same five presets the CLI does: `email`,
@@ -228,7 +239,7 @@ the server is ready.
 | `LAYA_MODELS` | `english,multilingual` | Comma-separated checkpoints to preload. An empty value keeps the MCP default rather than preloading every checkpoint. |
 | `LAYA_THREADS` | PyTorch default | Caps Torch intra-op threads for CPU inference; keep it at or below the physical core count. |
 | `LAYA_AUTO_TASK` | `0` | Set to `1` to let a request auto-route to the `typed-decisions` checkpoint. Same meaning as in `laya.serve`; it does not preload that checkpoint, so `LAYA_MODELS` still decides what is built at startup. |
-| `LAYA_DEFAULT_MODEL` | `english` | The checkpoint a state with no language evidence falls back to, same meaning as in `laya.serve`. Unlike `laya.serve`, an unresolvable name does not stop the server: it comes back as a `router construction failed` tool error on the next call, because a stdio server has no startup to refuse. |
+| `LAYA_DEFAULT_MODEL` | `multilingual` | The checkpoint a state with no language evidence falls back to, same meaning as in `laya.serve`. Unlike `laya.serve`, an unresolvable name does not stop the server: it comes back as a `router construction failed` tool error on the next call, because a stdio server has no startup to refuse. |
 | `LAYA_BASE_URL` | unset | Send predictions to a `laya-serve` on your own hardware instead of loading checkpoints in each MCP process. A bare `host:port` is read as HTTP. |
 | `LAYA_REMOTE_TIMEOUT` | `300` | HTTP timeout in seconds when `LAYA_BASE_URL` is set, including the server's cold load. Invalid or non-positive values use the default. |
 

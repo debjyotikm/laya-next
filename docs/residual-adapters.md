@@ -81,6 +81,12 @@ Freezing `model.encoder` leaves branch parameters trainable because they are reg
 separately. `detach_encoder=True` detaches the complete encoder result, including branches.
 The architecture does not choose losses, learning rates, or freeze the action head for you.
 
+The shared `laya.train.train_model` loop keeps adapter gradients when
+`TrainConfig(freeze_encoder=True)` freezes the backbone. Adapters use `head_lr` alongside the
+decision head; encoder parameters remain unchanged. This also applies when continuing an
+adapted checkpoint through `laya-train --freeze-encoder`. Freeze the adapters explicitly too
+if you intend to train only the decision head.
+
 After training, save into a **new** checkpoint directory:
 
 ```python
@@ -119,6 +125,10 @@ The supported path is eager PyTorch with padded ModernBERT inputs and the normal
 batching interface. CPU and CUDA are supported. `compile=True`, ONNX export/loading,
 and the TileLang fast path are not qualified for adapters: compilation/ONNX raise;
 `accelerate(strict=True)` raises, while non-strict acceleration warns and keeps eager inference.
+`backend="auto"` selects eager without probing accelerated backends. An explicit
+`set_backend("compile", strict=True)` raises; with `strict=False` it warns and falls back to eager.
+The upstream parallel-option layout is supported on its required Transformers 5 runtime;
+adapters preserve its option-reordering equivariance.
 Do not bypass these checks with a custom exporter or a replaced encoder forward.
 
 For width `d`, rank `r`, and `L` adapted blocks, the added parameter count is
@@ -134,6 +144,8 @@ python benchmarks/residual_adapters.py --model /path/to/local-checkpoint \
 ```
 
 The benchmark uses synthetic token inputs and the supplied local weights. It checks exact
-zero-initialization parity, reports warmed median latency and CUDA peak allocated memory,
+zero-initialization parity, reports warmed median latency, parameter storage and CUDA peak allocated memory,
 and optionally runs optimizer steps. It does not download models, evaluate decision quality,
 or save checkpoints. Use held-out task data to decide whether trained adapters improve your task.
+Parameter storage excludes activations, optimizer state and allocator overhead; it is not peak
+inference or training memory. CUDA peak memory is reported as `null` on CPU.

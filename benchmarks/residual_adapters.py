@@ -14,6 +14,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
+import transformers
 
 from laya import Agent
 from laya.common import DecisionModel
@@ -38,6 +39,7 @@ def measure(model, tensors, device, iterations):
             sync()
             samples.append((time.perf_counter() - start) * 1000)
         result = {"median_ms": statistics.median(samples),
+                  "parameter_bytes": sum(p.numel() * p.element_size() for p in model.parameters()),
                   "peak_allocated_bytes": (torch.cuda.max_memory_allocated(device)
                                            if device.type == "cuda" else None)}
         outputs = (logits.float().cpu(), actions.float().cpu())
@@ -73,7 +75,9 @@ def main():
                               n_act=stock.act_head[-1].out_features, residual_adapters=config).eval()
     missing, unexpected = candidate.load_state_dict(stock.state_dict(), strict=False)
     assert missing and all(k.startswith("residual_adapters.") for k in missing) and not unexpected
-    report = {"torch_version": torch.__version__, "iterations": args.iterations,
+    report = {"torch_version": torch.__version__, "transformers_version": transformers.__version__,
+              "iterations": args.iterations, "seed": 41, "cpu_threads": torch.get_num_threads(),
+              "residual_config": config,
               "device_type": device.type, "autocast": "bfloat16" if device.type == "cuda" else None,
               "added_parameters": sum(p.numel() for p in candidate.residual_adapters.parameters()),
               "stock_parameters": sum(p.numel() for p in stock.parameters()), "measurements": []}

@@ -84,6 +84,39 @@ class PortableComparison(unittest.TestCase):
             with self.assertRaises(ValueError):
                 model.predict({**request, "assertion": assertion})
 
+    def test_mixed_length_batches_match_single_requests(self):
+        requests = [example(), {**example(), "assertion": "the quantity reading exceeds the quantity limit"},
+                    {**example(), "fields": []}]
+        for variant in ("flat", "local_program"):
+            with self.subTest(variant=variant):
+                model = tiny(variant)
+                singles = model.predict_batch(requests, batch_size=1)
+                for size in (2, 3):
+                    together = model.predict_batch(requests, batch_size=size)
+                    for expected, actual in zip(singles, together):
+                        self.assertEqual(expected["usage"], actual["usage"])
+                        for key in ("operator_probabilities", "operand_probabilities", "gate"):
+                            torch.testing.assert_close(torch.tensor(expected["specialist"][key]),
+                                                       torch.tensor(actual["specialist"][key]),
+                                                       atol=1e-6, rtol=1e-5)
+                        torch.testing.assert_close(
+                            torch.tensor(list(expected["answers"]["verdict"]["probabilities"].values())),
+                            torch.tensor(list(actual["answers"]["verdict"]["probabilities"].values())),
+                            atol=1e-6, rtol=1e-5)
+
+    def test_complete_batch_is_validated_before_inference(self):
+        model = tiny()
+        calls = []
+        handle = model.operator.register_forward_pre_hook(lambda m, args: calls.append(True))
+        try:
+            for invalid in ({**example(), "fields": [{"name": "x", "value": True}]},
+                            {**example(), "assertion": "reading " * 600}):
+                with self.assertRaises(ValueError):
+                    model.predict_batch([example(), invalid], batch_size=1)
+                self.assertEqual(calls, [])
+        finally:
+            handle.remove()
+
     def test_json_escaping_and_identifier_boundaries(self):
         model = tiny()
         request = {"fields": [{"name": 'x"y', "value": 1, "unit": "g"},
