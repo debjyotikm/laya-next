@@ -2,4 +2,6 @@
 zensical==0.0.67
 # API reference pages (docs/reference/). Ruff formats the rendered signatures.
 mkdocstrings-python==2.0.9
+# mkdocstrings 1.0.6 uses the pre-12.2 Highlight constructor (without `md`).
+pymdown-extensions==12.1
 ruff==0.16.9
