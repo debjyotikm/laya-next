@@ -1567,6 +1567,24 @@ check("Jev choice confidence", round(jev_confidence({"type": "choice", "probabil
 check("Jev score confidence", round(jev_confidence({"type": "score", "probabilities": {"0": 0.1, "1": 0.8, "2": 0.1}}), 4), 0.7)
 check("Jev noul confidence absent", jev_confidence({"type": "noul", "noul": 0.9}), None)
 
+from laya import quantity as _quantity  # noqa: E402
+
+check("quantity exports", _quantity.__all__, ["QuantityBatch", "prepare_quantities", "QuantityEncoder"])
+check("QuantityBatch fields", [field.name for field in dataclasses.fields(_quantity.QuantityBatch)],
+      ["rows", "sequence_length"])
+check_true("QuantityBatch frozen", _quantity.QuantityBatch.__dataclass_params__.frozen)
+check("prepare_quantities signature", list(sig(_quantity.prepare_quantities)), ["rows", "sequence_length"])
+check("QuantityEncoder signature", list(sig(_quantity.QuantityEncoder)),
+      ["rank", "width", "min_power", "max_power", "zero_output"])
+check_param("QuantityEncoder", _quantity.QuantityEncoder, "width", 32)
+check_param("QuantityEncoder", _quantity.QuantityEncoder, "min_power", -32, inspect.Parameter.KEYWORD_ONLY)
+check_param("QuantityEncoder", _quantity.QuantityEncoder, "max_power", 32, inspect.Parameter.KEYWORD_ONLY)
+check_param("QuantityEncoder", _quantity.QuantityEncoder, "zero_output", False, inspect.Parameter.KEYWORD_ONLY)
+check("quantity forward signature", list(sig(_quantity.QuantityEncoder.forward)), ["self", "batch"])
+check("quantity from_config signature", list(sig(_quantity.QuantityEncoder.from_config)), ["config"])
+check("quantity config keys", sorted(_quantity.QuantityEncoder(4).get_config()),
+      ["max_power", "min_power", "rank", "version", "width", "zero_output"])
+
 print("\n%d passed, %d failed" % (len(PASS), len(FAIL)))
 for f in FAIL:
     print("  FAIL", f)
