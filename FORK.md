@@ -12,6 +12,9 @@ This fork is not an official upstream release.
 - [Numeric features](docs/numeric-features.md): exact decimal digit/place features
   and alignment to tokenizer offsets. These utilities do not automatically modify
   the decision model or its predictions.
+- [Whole-quantity encoder](docs/quantity-encoder.md): an optional trainable component
+  pooling digit/place/sign interactions into numeric token features. It requires
+  caller-owned model integration and training; it is not enabled by `Agent`.
 - [Comparison specialist](docs/comparison.md): an explicit opt-in wrapper combining
   learned operator/operand binding with exact unit comparisons. It requires a
   separately trained local bundle; no specialist weights are included or downloaded.

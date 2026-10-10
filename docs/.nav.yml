@@ -19,6 +19,7 @@ nav:
   - Fine-tuning:
       - residual-adapters.md
       - numeric-features.md
+      - quantity-encoder.md
       - finetune.md
       - finetune_browser_agent.md
   - reference
