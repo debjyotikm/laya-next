@@ -1,7 +1,7 @@
 # laya-next
 
 An independent experimental fork of [LAYA](https://github.com/NandhaKishorM/laya),
-initially based on upstream 0.3.26. The upstream license and attribution are preserved.
+updated through upstream 0.4.2. The upstream license and attribution are preserved.
 This fork is not an official upstream release.
 
 ## Added features
@@ -19,6 +19,16 @@ This fork is not an official upstream release.
 Default prediction behavior is retained. The adapter path supports eager PyTorch;
 unsupported acceleration/export paths reject adapted checkpoints rather than silently
 dropping the branches. See each feature's documentation for limits and runnable checks.
+
+## Compatibility updates
+
+The residual adapters integrate with the shared trainer, including a frozen encoder
+with trainable adapters, and the supported parallel-option layout. Unsupported
+backend requests are rejected or explicitly fall back to eager execution; they do
+not silently omit trained adapter weights.
+
+The TypeScript SDK accepts and validates the optional HTTP `x_jev_confidence` field
+on choice and score answers. Older responses without that field remain valid.
 
 ## Install this fork
 
